@@ -2,6 +2,7 @@
 ITCS343 Project 1 Startup Code
 Thanapon Noraset
 */
+#define _POSIX_C_SOURCE 199309L //IDK, stackoverflow said that if i put this, BLOCK_MONOTONIC_RAW will not error
 #include <sys/time.h>
 #include <inttypes.h>
 #include <stdio.h>
@@ -46,7 +47,7 @@ int getLeftRobot(int tid) {
 
 int getRightRobot(int tid) {
     int rtid;
-    if(tid == N) {
+    if(tid == N-1) {
         rtid = 0;
     } else {
         rtid = tid+1;
@@ -134,7 +135,8 @@ void sendReport(int tid) {
         totalReport++;
         pthread_mutex_unlock(&server);
         //printf("%d Server Unlock!\n",tid);
-        printf("UPDATE[%"PRIu64"]: ID:%d ReportID:%d \n", delta_us(), tid, reportCount[tid]);
+        //printf("\t\tUPDATE[%"PRIu64"]: ID:%d ReportID:%d \n", delta_us(), tid, reportCount[tid]); //for debug print
+        printf("UPDATE[%"PRIu64"]: %d, %d \n", delta_us(), tid, totalReport);
         break;
     }
 }
@@ -152,15 +154,18 @@ void *tachikoma(void *arg)
             //printf("[%d,%d,%d] We're formed group! We want to learn!\n", getLeftRobot(tid), tid, getRightRobot(tid));
             sem_wait(simu);
             e = rand() % E + 1;
-            printf("LEARN[%"PRIu64"]: L:%d [ID:%d] R:%d \n", delta_us(), getLeftRobot(tid), tid, getRightRobot(tid));
+            //printf("LEARN[%"PRIu64"]: L:%d [ID:%d] R:%d \n", delta_us(), getLeftRobot(tid), tid, getRightRobot(tid)); //for debug print
+            printf("LEARN[%"PRIu64"]: %d, %d, %d \n", delta_us(), tid, getLeftRobot(tid), getRightRobot(tid));
             fflush(stdout);
             sleep(e);
             learningTime[tid] += e;
-            printf("DONE[%"PRIu64"]: L:%d [ID:%d] R:%d \n", delta_us(), getLeftRobot(tid), tid, getRightRobot(tid));
+            //printf("\tDONE[%"PRIu64"]: L:%d [ID:%d] R:%d \n", delta_us(), getLeftRobot(tid), tid, getRightRobot(tid)); //for debug print
+            printf("DONE[%"PRIu64"]: %d, %d, %d \n", delta_us(), tid, getLeftRobot(tid), getRightRobot(tid));
             fflush(stdout);
             sem_post(simu);
             releaseFriend(tid);
             sendReport(tid);
+            sleep(1);
          } else {
             sleep(1);
          }
@@ -168,7 +173,7 @@ void *tachikoma(void *arg)
 
     if (*g2g == -1)
     {
-        printf("SHUTDOWN[%"PRIu64"]: L:%d [ID:%d] R:%d \n", delta_us(), getLeftRobot(tid), tid, getRightRobot(tid));
+        printf("SHUTDOWN[%"PRIu64"]: %d \n", delta_us(), tid);
     }
 
     return NULL;
@@ -221,16 +226,21 @@ int main(int argc, char **argv)
     {
         pthread_join(threads[i], NULL);
     }
-    /* for (i = 0; i < N; i++)
+    /* printf("====[STATUS]====\n");
+    for (i = 0; i < N; i++)
     {
         printf("[%d] : %d\n",i ,status[i]);
     } */
-    printf("====[REPORT]====\n");
+    /* printf("\n====[REPORT]====\n");
     for (i = 0; i < N; i++)
     {
         printf("[%d] : %d, %d\n",i ,learningTime[i] ,reportCount[i]);
+    } */
+    for (i = 0; i < N; i++)
+    {
+        printf("%d: %d, %d\n",i ,learningTime[i] ,reportCount[i]);
     }
-    printf("Total Report : %d\n",totalReport);
+    printf("MASTER: %d\n",totalReport);
     free(status);
     free(reportCount);
     sem_close(simu);

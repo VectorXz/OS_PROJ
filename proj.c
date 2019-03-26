@@ -173,7 +173,7 @@ void *tachikoma(void *arg)
 
     if (*g2g == -1)
     {
-        printf("SHUTDOWN[%"PRIu64"]: %d \n", delta_us(), tid);
+        //printf("SHUTDOWN[%"PRIu64"]: %d \n", delta_us(), tid);
     }
 
     return NULL;

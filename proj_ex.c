@@ -23,10 +23,12 @@ int E, N;
 int *status; //0=available | 1=helping
 int *reportCount;
 int *learningTime;
+int *priority;
 int totalReport;
 sem_t *simu;
 pthread_mutex_t checkingLock;
 pthread_mutex_t server;
+pthread_mutex_t priorityLock;
 
 uint64_t delta_us()
 {
@@ -61,16 +63,37 @@ int checkFriendStatus(int tid) {
     int righttid = getRightRobot(tid);
     int checkLockStatus;
     int acquireStatus = -1;
+    int allowToRun;
     while((checkLockStatus = pthread_mutex_trylock(&checkingLock)) == 0) {
         //printf("[LOCK] %d Acquired friend lock!\n", tid);
         if(status[tid] != LEARN && status[lefttid] != LEARN && status[righttid] != LEARN) {
-            status[tid] = LEARN;
-            status[lefttid] = HELP;
-            status[righttid] = HELP;
-            //printf("[LOCK] %d Acquired friends successfully!\n",tid);
-            acquireStatus = 0;
-            //acquire friends successfully
-        } else {
+                int locker = pthread_mutex_lock(&priorityLock);
+                if(locker == 0) {
+                    if(priority[tid] > 0) {
+                        int value;
+                        sem_getvalue(simu, &value);
+                        if(value > 0) {
+                            allowToRun = 1;
+                        } else {
+                            priority[tid]--;
+                            allowToRun = 0;
+                        }
+                    } else {
+                        allowToRun = 1;
+                    }
+                    pthread_mutex_unlock(&priorityLock);
+                }
+                if(allowToRun == 1) {
+                status[tid] = LEARN;
+                status[lefttid] = HELP;
+                status[righttid] = HELP;
+                //printf("[LOCK] %d Acquired friends successfully!\n",tid);
+                acquireStatus = 0;
+                //acquire friends successfully
+                } else {
+                    acquireStatus = 1;
+                }
+            } else {
             //printf("[LOCK] %d Cannot acquire friends!\n",tid);
             acquireStatus = 1;
             //friends not available
@@ -81,7 +104,7 @@ int checkFriendStatus(int tid) {
         }
         //checkLockStatus = -1;
         break;
-    }
+        }
     return acquireStatus;
 }
 
@@ -96,35 +119,6 @@ int releaseFriend(int tid) {
     }
     return 0;
 }
-
-/* int releaseFriend(int tid) {
-    int lefttid = getLeftRobot(tid);
-    int righttid = getRightRobot(tid);
-    int checkLockStatus;
-    int releaseStatus = -1;
-    printf("%d is going to finish learning\n", tid);
-    while((checkLockStatus = pthread_mutex_trylock(&checkingLock)) == 0) {
-        printf("[RELEASE] %d Acquired friend lock!\n", tid);
-        if(status[tid] == LEARN && status[lefttid] != FREE && status[righttid] != FREE) {
-            status[tid] = FREE;
-            status[lefttid] = FREE;
-            status[righttid] = FREE;
-            printf("[FREED] %d,%d,%d\n",tid,lefttid,righttid);
-            releaseStatus = 0;
-            //release friends successfully
-        } else {
-            releaseStatus = 1;
-            //friends cannot release
-        }
-        if(checkLockStatus == 0) {
-            pthread_mutex_unlock(&checkingLock);
-            printf("[RELEASE] %d Friend Unlock!\n", tid);
-            //checkLockStatus = -1;
-        }
-        break;
-    }
-    return releaseStatus;
-} */
 
 void sendReport(int tid) {
     //printf("[%d] is sending report\n", tid);
@@ -165,6 +159,11 @@ void *tachikoma(void *arg)
             sem_post(simu);
             releaseFriend(tid);
             sendReport(tid);
+            int locker = pthread_mutex_lock(&priorityLock);
+            if(locker == 0) {
+                priority[tid] = 6;
+                pthread_mutex_unlock(&priorityLock);
+            }
             sleep(1);
          } else {
             sleep(1);
@@ -193,6 +192,7 @@ int main(int argc, char **argv)
     status = (int *)malloc(sizeof(int) * N);
     reportCount = (int *)malloc(sizeof(int) * N);
     learningTime = (int *)malloc(sizeof(int) * N);
+    priority = (int *)malloc(sizeof(int) * N);
 
     simu = sem_open("/simulator", O_CREAT, 0666, M);
     sem_close(simu);
@@ -209,6 +209,7 @@ int main(int argc, char **argv)
         tachikomaId[i] = i;
         pthread_create(&threads[i], NULL, tachikoma, (void *)&tachikomaId[i]);
         status[i] = FREE;
+        priority[i] = 0;
         learningTime[i] = 0;
     }
 
@@ -243,6 +244,8 @@ int main(int argc, char **argv)
     printf("MASTER: %d\n",totalReport);
     free(status);
     free(reportCount);
+    free(priority);
+    free(learningTime);
     sem_close(simu);
     sem_unlink("/simulator");
     printf("MASTER: Bye\n");
